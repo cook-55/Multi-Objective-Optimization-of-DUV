@@ -25,7 +25,7 @@ class MaterialDatabase:
             "SiO2": {"n": 1.560, "k": 1.5e-4, "dn_dT": 11.0, "alpha": 0.55, "stress": 0.0}
         }
         self.mainstream = {
-            "MgF2": {"n": 1.46, "k": 7.8e-4, "dn_dT": -2.0, "alpha": 13.5, "stress": 300.0},
+            "MgF2": {"n": 1.44, "k": 7.8e-4, "dn_dT": -2.0, "alpha": 13.5, "stress": 300.0},
             "LaF3": {"n": 1.72, "k": 2.0e-3, "dn_dT": -1.0, "alpha": 17.0, "stress": -200.0}
         }
         self.auxiliary = {
@@ -341,7 +341,7 @@ class TMMSolver:
     def monte_carlo_robustness(self, d_list, material_list, n_samples=1000,
                                thickness_sigma_relative=0.01,
                                reflectance_threshold=0.5,
-                               std_threshold=0.15,
+                               std_threshold=0.12,
                                seed=123):
         rng = np.random.default_rng(seed)
         d_nominal = np.array(d_list, dtype=float)
@@ -853,14 +853,14 @@ class ScienceVisualizer:
 
         fig, ax = plt.subplots(figsize=JournalFigureConfig.get_figsize("single"))
         ax.axhline(y=1.0, color=self.c['muted_ink'], linewidth=1.2,
-                   linestyle='--', label="Center reference ($\\delta=1$)")
+                   linestyle='--', label="Center reference ($\\alpha=1$)")
         ax.fill_between(r_mm, 1.0, bias, color=self.c['mint'], alpha=0.95)
         ax.plot(r_mm, bias, color=self.c['sage_green'], linewidth=2.8,
-                label="Thickness bias $\\delta(r)$")
+                label="Thickness bias $\\alpha(r)$")
         ax.scatter(r_mm, bias, s=44, facecolor='white',
                    edgecolor=self.c['sage_green'], linewidth=1.5, zorder=4)
         ax.set_xlabel("Radial Position (mm)", fontweight="bold")
-        ax.set_ylabel("Thickness Bias Factor $\\delta(r)$", fontweight="bold")
+        ax.set_ylabel("Thickness Bias Factor $\\alpha(r)$", fontweight="bold")
         ax.set_title("Deposition Thickness Deviation on Curved Substrate",
                      fontweight="bold")
         self._style_axis(ax, grid='both')
@@ -1001,10 +1001,10 @@ class ScienceVisualizer:
         ax.set_ylabel("Reflectance $R$ (%)", fontweight="bold")
         ax.set_title("Radial Reflectance at 193 nm", fontweight="bold")
         self._style_axis(ax, grid='both')
-        self._legend(ax, loc="upper left")
+        self._legend(ax, loc="lower right")
         stats = (f"$n$={len(r)}\nArea $\\mu$={mean_R:.3f}%\n"
                  f"$\\sigma$={std_R:.4f}%\nPV={np.ptp(R):.4f}%")
-        self._stats_box(ax, stats, x=0.97, y=0.95, ha='right', va='top')
+        self._stats_box(ax, stats, x=0.97, y=0.20, ha='right', va='bottom')
         self._save_figure(fig, save_name)
 
     def plot_polarization_radial(self, tmm_solver, d_list, mats,
@@ -1155,7 +1155,7 @@ class ScienceVisualizer:
     def plot_monte_carlo_yield(self, samples, nominal_perf, yield_rate,
                                thickness_sigma_relative=0.015,
                                reflectance_threshold=0.5,
-                               std_threshold=0.15,
+                               std_threshold=0.12,
                                save_name="monte_carlo_yield"):
         fig, ax = plt.subplots(figsize=JournalFigureConfig.get_figsize("single"))
         avg_R_vals = samples['avg_R']
@@ -1186,6 +1186,184 @@ class ScienceVisualizer:
         self._legend(ax, loc='upper left')
         self._save_figure(fig, save_name)
 
+    def plot_validation_refractive_index(self,
+                                         save_name="validation_refractive_index"):
+        c_paper = '#1A5276'
+        c_range = '#E6B0AA'
+        c_lit_mid = '#B03A2E'
+        c_grid = '#EBEDEF'
+
+        fig, ax = plt.subplots(figsize=(6.8, 4.4))
+
+        n_data = {
+            r'$\mathrm{LaF_3}$': {
+                'paper': 1.72, 'lit_lo': 1.670, 'lit_hi': 1.720,
+                'src': 'Ristau 2002; Bischoff 2008; C. Liu 2016',
+                'dx': -0.015
+            },
+            r'$\mathrm{MgF_2}$': {
+                'paper': 1.44, 'lit_lo': 1.415, 'lit_hi': 1.440,
+                'src': 'Ristau 2002; Guo 2013',
+                'dx': 0.010
+            },
+            r'$\mathrm{GdF_3}$': {
+                'paper': 1.70, 'lit_lo': 1.650, 'lit_hi': 1.710,
+                'src': 'Liu 2006; Xue 2009; B. Liu 2016',
+                'dx': 0.000
+            },
+            r'$\mathrm{AlF_3}$': {
+                'paper': 1.40, 'lit_lo': 1.380, 'lit_hi': 1.430,
+                'src': 'Xue 2010; B. Liu 2016',
+                'dx': 0.025
+            },
+        }
+
+        mats = list(n_data.keys())
+        y = np.arange(len(mats))
+
+        for i, m in enumerate(mats):
+            d = n_data[m]
+            ax.plot([d['lit_lo'], d['lit_hi']], [i, i],
+                    color=c_range, linewidth=4.5, solid_capstyle='round',
+                    zorder=2, label='Literature range' if i == 0 else "")
+            mid = (d['lit_lo'] + d['lit_hi']) / 2
+            ax.plot(mid, i, 'o', color=c_lit_mid, markersize=5.5,
+                    markeredgecolor='white', markeredgewidth=0.8, zorder=3,
+                    label='Literature midpoint' if i == 0 else "")
+
+        paper_vals = [n_data[m]['paper'] for m in mats]
+        ax.plot(paper_vals, y, 'D', color=c_paper, markersize=8.5,
+                markeredgecolor='white', markeredgewidth=1.2, zorder=4,
+                label='This work (adopted)')
+
+        for i, m in enumerate(mats):
+            d = n_data[m]
+            ax.text(d['paper'], i + 0.16, f"{d['paper']:.2f}",
+                    fontsize=8.5, color=c_paper, fontweight='bold',
+                    ha='center', va='bottom')
+
+            lit_str = f"Lit: {d['lit_lo']:.3f}–{d['lit_hi']:.3f} ({d['src']})"
+            lit_x = (d['lit_lo'] + d['lit_hi']) / 2 + d.get('dx', 0.0)
+            ax.text(lit_x, i - 0.18, lit_str,
+                    fontsize=7.8, color=c_lit_mid, ha='center', va='top')
+
+        ax.set_yticks(y)
+        ax.set_yticklabels(mats, fontsize=11, fontweight='bold')
+        ax.set_xlabel('Refractive index $n$ at 193 nm',
+                      fontsize=11, fontweight='bold')
+        ax.set_xlim(1.34, 1.78)
+        ax.set_ylim(-0.6, len(mats) + 0.15)
+        ax.xaxis.set_major_locator(plt.MultipleLocator(0.05))
+        ax.grid(axis='x', color=c_grid, linewidth=0.8,
+                linestyle='--', zorder=0)
+
+        for spine in ('top', 'right'):
+            ax.spines[spine].set_visible(False)
+        ax.spines['left'].set_color(self.c['axis'])
+        ax.spines['bottom'].set_color(self.c['axis'])
+
+        ax.legend(loc='upper right', fontsize=8.2,
+                  framealpha=0.95, edgecolor='#CCCCCC')
+        fig.tight_layout()
+        self._save_figure(fig, save_name)
+
+    def plot_validation_stress(self, save_name="validation_stress"):
+        c_paper = '#1A5276'
+        c_range = '#E6B0AA'
+        c_lit_mid = '#B03A2E'
+        c_grid = '#EBEDEF'
+
+        fig, ax = plt.subplots(figsize=(7.2, 5.0))
+
+        s_data = {
+            r'$\mathrm{Al_2O_3}$': {
+                'paper': 500, 'lit_lo': 400, 'lit_hi': 550,
+                'src': 'Abadias 2018'
+            },
+            r'$\mathrm{MgF_2}$': {
+                'paper': 300, 'lit_lo': 300, 'lit_hi': 400,
+                'src': 'Ristau 2002'
+            },
+            r'$\mathrm{AlF_3}$': {
+                'paper': 100, 'lit_lo': 23, 'lit_hi': 150,
+                'src': 'B. Liu 2016; Xue 2010'
+            },
+            r'$\mathrm{GdF_3}$': {
+                'paper': -80, 'lit_lo': -120, 'lit_hi': -35,
+                'src': 'B. Liu 2016; Abadias 2018'
+            },
+            r'$\mathrm{YF_3}$': {
+                'paper': -100, 'lit_lo': -150, 'lit_hi': -60,
+                'src': 'Abadias 2018'
+            },
+            r'$\mathrm{LaF_3}$': {
+                'paper': -200, 'lit_lo': -300, 'lit_hi': -150,
+                'src': 'Abadias 2018'
+            },
+        }
+
+        mats_s = list(s_data.keys())
+        y_s = np.arange(len(mats_s))
+
+        ax.axvspan(-360, 0, color='#EBF5FB', alpha=0.6, zorder=0)
+        ax.axvspan(0, 620, color='#FDEDEC', alpha=0.5, zorder=0)
+        ax.text(-180, len(mats_s) - 0.35, "Compressive Stress (–)",
+                ha='center', fontsize=9, color='#2980B9',
+                fontweight='bold', alpha=0.85)
+        ax.text(160, len(mats_s) - 0.35, "Tensile Stress (+)",
+                ha='center', fontsize=9, color='#C0392B',
+                fontweight='bold', alpha=0.85)
+
+        for i, m in enumerate(mats_s):
+            d = s_data[m]
+            ax.plot([d['lit_lo'], d['lit_hi']], [i, i],
+                    color=c_range, linewidth=4.5, solid_capstyle='round',
+                    zorder=2, label='Literature range' if i == 0 else "")
+            mid = (d['lit_lo'] + d['lit_hi']) / 2
+            ax.plot(mid, i, 'o', color=c_lit_mid, markersize=5.5,
+                    markeredgecolor='white', markeredgewidth=0.8, zorder=3,
+                    label='Literature midpoint' if i == 0 else "")
+
+        paper_s = [s_data[m]['paper'] for m in mats_s]
+        ax.plot(paper_s, y_s, 'D', color=c_paper, markersize=8.5,
+                markeredgecolor='white', markeredgewidth=1.2, zorder=4,
+                label='This work (adopted)')
+
+        for i, m in enumerate(mats_s):
+            d = s_data[m]
+            sign_p = '+' if d['paper'] > 0 else ''
+            ax.text(d['paper'], i + 0.16, f"{sign_p}{d['paper']}",
+                    fontsize=8.5, color=c_paper, fontweight='bold',
+                    ha='center', va='bottom')
+
+            sign_lo = '+' if d['lit_lo'] > 0 else ''
+            sign_hi = '+' if d['lit_hi'] > 0 else ''
+            lit_str = (f"Lit: {sign_lo}{d['lit_lo']} to "
+                       f"{sign_hi}{d['lit_hi']} ({d['src']})")
+            lit_x = (d['lit_lo'] + d['lit_hi']) / 2
+            ax.text(lit_x, i - 0.18, lit_str,
+                    fontsize=7.6, color=c_lit_mid, ha='center', va='top')
+
+        ax.axvline(0, color=self.c['axis'], linewidth=0.9,
+                   linestyle='--', zorder=1)
+        ax.set_yticks(y_s)
+        ax.set_yticklabels(mats_s, fontsize=11, fontweight='bold')
+        ax.set_xlabel('Residual stress (MPa)', fontsize=11, fontweight='bold')
+        ax.set_xlim(-350, 600)
+        ax.set_ylim(-0.6, len(mats_s) + 0.15)
+        ax.xaxis.set_major_locator(plt.MultipleLocator(100))
+        ax.grid(axis='x', color=c_grid, linewidth=0.8,
+                linestyle='--', zorder=0)
+
+        for spine in ('top', 'right'):
+            ax.spines[spine].set_visible(False)
+        ax.spines['left'].set_color(self.c['axis'])
+        ax.spines['bottom'].set_color(self.c['axis'])
+
+        ax.legend(loc='upper right', fontsize=8.2,
+                  framealpha=0.95, edgecolor='#CCCCCC')
+        fig.tight_layout()
+        self._save_figure(fig, save_name)
 
 # ============================================================
 # 5. 主优化流程
@@ -1225,7 +1403,7 @@ def main():
     model_path = os.path.join(base_dir, "best_surrogate.pth")
     history_csv = os.path.join(base_dir, "loss_history.csv")
     scaler_path = os.path.join(base_dir, "surrogate_scalers.pkl")
-    dataset_samples = int(os.getenv("COATING_DATASET_SAMPLES", "5000"))  # 可根据算力恢复为80000
+    dataset_samples = int(os.getenv("COATING_DATASET_SAMPLES", "80000"))  # 默认与正文一致的 8e4 训练样本
     regenerate_dataset, existing_samples = dataset_needs_regeneration(dataset_csv, CALC_VERSION)
     if regenerate_dataset:
         samples_to_generate = max(dataset_samples, existing_samples)
@@ -1374,7 +1552,8 @@ def main():
     # ---- 基底模型可视化 ----
     vis.plot_substrate_incidence_angle(substrate, save_name="substrate_incidence")
     vis.plot_thickness_deviation(substrate, save_name="thickness_deviation")
-
+    vis.plot_validation_refractive_index(save_name="validation_refractive_index")
+    vis.plot_validation_stress(save_name="validation_stress")
     # ---- 打印最优设计总览 ----
     print("\n" + "=" * 60)
     print("OPTIMAL COATING DESIGN RESULTS")
@@ -1421,7 +1600,7 @@ def main():
     print("\nPerforming Monte Carlo robustness analysis...")
     mc_sigma = 0.015
     reflectance_threshold = 0.5
-    std_threshold = 0.15
+    std_threshold = 0.12  # 与正文 Sec.3.4.1 验收规则一致（sigma_R < 0.12%）
     mc_results, mc_yield = tmm.monte_carlo_robustness(
         best_d, best_mats, n_samples=1000,
         thickness_sigma_relative=mc_sigma,
